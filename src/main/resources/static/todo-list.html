@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <title>Teendőlista</title>
+</head>
+<body>
+<h1>Teendők</h1>
+
+<ul id="todoList"></ul>
+
+<h2>Új teendő hozzáadása</h2>
+<form id="todoForm">
+    <label for="title">Cím:</label>
+    <input type="text" id="title" required><br>
+
+    <label for="description">Leírás:</label>
+    <input type="text" id="description"><br>
+
+    <label for="dueDate">Határidő:</label>
+    <input type="date" id="dueDate"><br>
+
+    <button type="submit">Hozzáadás</button>
+</form>
+
+<br>
+<button id="logoutButton">Kijelentkezés</button>
+
+<script>
+    const username = localStorage.getItem('loggedInUser');
+
+    if (!username) {
+        alert('Nem vagy bejelentkezve!');
+        window.location.href = '/login.html';
+    }
+
+    async function loadTodos() {
+        const response = await fetch(`/api/todos/user/${username}`);
+        const todos = await response.json();
+
+        const list = document.getElementById('todoList');
+        list.innerHTML = '';
+
+        todos.forEach(todo => {
+            const item = document.createElement('li');
+
+            item.innerHTML = `
+                <input type="checkbox" ${todo.completed ? 'checked' : ''} id="todo-${todo.id}" />
+                <label for="todo-${todo.id}">
+                    <strong>${todo.title}</strong> – ${todo.description || ''}
+                    (Határidő: ${todo.dueDate ? todo.dueDate.substring(0, 10) : 'nincs megadva'})
+                </label>
+            `;
+
+            // ✅ Állapot módosítás
+            const checkbox = item.querySelector('input[type="checkbox"]');
+            checkbox.addEventListener('change', async () => {
+                try {
+                    const res = await fetch(`/api/todos/${todo.id}/complete`, {
+                        method: 'PATCH',
+                    });
+                    if (!res.ok) {
+                        alert('Nem sikerült frissíteni az állapotot!');
+                        checkbox.checked = !checkbox.checked;
+                    }
+                } catch (e) {
+                    alert('Hálózati hiba!');
+                    checkbox.checked = !checkbox.checked;
+                }
+            });
+
+            // 🗑 Törlés
+            const deleteButton = document.createElement('button');
+            deleteButton.textContent = '🗑';
+            deleteButton.addEventListener('click', async () => {
+                await fetch(`/api/todos/${todo.id}`, { method: 'DELETE' });
+                loadTodos();
+            });
+            item.appendChild(deleteButton);
+
+            // ✏️ Teljes szerkesztés
+            const editButton = document.createElement('button');
+            editButton.textContent = '✏️';
+            editButton.addEventListener('click', async () => {
+                const newTitle = prompt("Új cím:", todo.title);
+                const newDescription = prompt("Új leírás:", todo.description || '');
+                const newDueDate = prompt("Új határidő (ÉÉÉÉ-HH-NN):", todo.dueDate ? todo.dueDate.substring(0, 10) : '');
+
+                if (newTitle !== null && newDescription !== null && newDueDate !== null) {
+                    await fetch(`/api/todos/${todo.id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            ...todo,
+                            title: newTitle,
+                            description: newDescription,
+                            dueDate: newDueDate
+                        })
+                    });
+                    loadTodos();
+                }
+            });
+            item.appendChild(editButton);
+
+            list.appendChild(item);
+        });
+    }
+
+    document.getElementById('todoForm').addEventListener('submit', async function (e) {
+        e.preventDefault();
+
+        const title = document.getElementById('title').value;
+        const description = document.getElementById('description').value;
+        const dueDate = document.getElementById('dueDate').value;
+
+        await fetch(`/api/todos/user/${username}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title, description, dueDate, completed: false })
+        });
+
+        document.getElementById('todoForm').reset();
+        loadTodos();
+    });
+
+    document.getElementById('logoutButton').addEventListener('click', () => {
+        localStorage.removeItem('loggedInUser');
+        window.location.href = '/login.html';
+    });
+
+    if (username) {
+        loadTodos();
+    }
+</script>
+</body>
+</html>
